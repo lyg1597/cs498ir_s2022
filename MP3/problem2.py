@@ -36,7 +36,23 @@ def solve_robot_ik(robot,gripper,Tgripper):
         Tgripper (klampt se3 object)
     """
     #TODO: solve the IK problem
-    return None
+    num_link = robot.numLinks()
+    last_link = robot.link(num_link-1)
+    # gripper_link = gripper.gripperLinks 
+
+    s = ik.IKSolver(robot)
+    objective1 = ik.IKObjective()
+    objective1.setFixedTransform(num_link-1, Tgripper[0], Tgripper[1])
+    s.add(objective1)
+    # s.add(objective2)
+    s.setMaxIters(100)
+    s.setTolerance(1e-4)
+    res = s.solve()
+    if res:
+        print(s.lastSolveIters(),"iterations, residual",s.getResidual())
+        return s.robot.config
+    else:
+        return None
 
 def sample_grasp_ik(robot,gripper,grasp_local,obj):
     """Given a robot, a gripper, a desired antipodal grasp
@@ -61,7 +77,18 @@ def sample_grasp_ik(robot,gripper,grasp_local,obj):
         obj (RigidObjectModel): the object
     """
     #TODO: solve the IK problem
-    return None,None
+    object_transform = obj.getTransform()
+    grasp_local_center = grasp_local.center
+    grasp_local_axis = grasp_local.axis
+    grasp_world_center = se3.apply(object_transform, grasp_local_center)
+    grasp_world_axis = se3.apply_rotation(object_transform, grasp_local_axis)
+    grasp_world = AntipodalGrasp(grasp_world_center, grasp_world_axis)
+    desired_transform = grasp_world.get_grasp_transform(gripper)
+    q = solve_robot_ik(robot, gripper, desired_transform)
+    if q is None:
+        return None,None
+    else:
+        return q, desired_transform
 
 def solve_grasp_ik(robot,gripper,grasp_local,obj):
     #TODO: fill me in find a grasp & IK configuration that avoids collisions
