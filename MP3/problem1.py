@@ -49,9 +49,18 @@ def make_grasp_approach(gripper_info,T_grasp,finger_width,distance=None):
         distance = gripper_info.fingerLength
     fopen = gripper_info.partwayOpenConfig(1)
     fclose = gripper_info.partwayOpenConfig(0)
+    fclose = np.array(fclose)*((gripper_info.maximumSpan-finger_width)/gripper_info.maximumSpan)
+    fclose = fclose.tolist()
     #TODO: construct the trajectories
     finger_trajectory = Trajectory([0,1],[fopen,fclose])
-    gripper_trajectory = SE3Trajectory([0,1],[T_grasp,T_grasp])
+    
+    # translation_vector = se3.apply_rotation(T_grasp, [-distance,0,0])
+    # translate_start = np.array(T_grasp[1]) + np.array(translation_vector)
+    dir_vector = np.array(se3.apply_rotation(T_grasp, gripper_info.primaryAxis))
+    translation_vector = distance*dir_vector/np.linalg.norm(dir_vector)
+    translate_start = np.array(T_grasp[1]) - np.array(translation_vector)
+    T_start = (T_grasp[0], translate_start.tolist())
+    gripper_trajectory = SE3Trajectory([0,1],[T_start,T_grasp])
     return gripper_trajectory,finger_trajectory
 
 ####################################################################################
