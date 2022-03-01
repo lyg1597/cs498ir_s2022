@@ -18,7 +18,7 @@ from problem1 import sample_grasp_approach
 
 ######################### Problem 2 code goes here #################################
 
-def solve_robot_ik(robot,gripper,Tgripper):
+def solve_robot_ik(robot,gripper:GripperInfo,Tgripper):
     """Given a robot, a gripper, and a desired gripper transform,
     solve the IK problem to place the gripper at the desired transform.
     
@@ -38,11 +38,12 @@ def solve_robot_ik(robot,gripper,Tgripper):
     #TODO: solve the IK problem
     num_link = robot.numLinks()
     last_link = robot.link(num_link-1)
+    link = gripper.baseLink
     # gripper_link = gripper.gripperLinks 
 
     s = ik.IKSolver(robot)
     objective1 = ik.IKObjective()
-    objective1.setFixedTransform(num_link-1, Tgripper[0], Tgripper[1])
+    objective1.setFixedTransform(link, Tgripper[0], Tgripper[1])
     s.add(objective1)
     # s.add(objective2)
     s.setMaxIters(100)
@@ -77,6 +78,7 @@ def sample_grasp_ik(robot,gripper,grasp_local,obj):
         obj (RigidObjectModel): the object
     """
     #TODO: solve the IK problem
+    # A parameter in solver to constraint the links used. 
     object_transform = obj.getTransform()
     grasp_local_center = grasp_local.center
     grasp_local_axis = grasp_local.axis
