@@ -37,17 +37,17 @@ def solve_robot_ik(robot,gripper:GripperInfo,Tgripper):
     """
     #TODO: solve the IK problem
     num_link = robot.numLinks()
-    last_link = robot.link(num_link-1)
     link = gripper.baseLink
     # gripper_link = gripper.gripperLinks 
 
     s = ik.IKSolver(robot)
+    s.setActiveDofs([i for i in range(6, num_link)])
+    s.setMaxIters(100)
     objective1 = ik.IKObjective()
     objective1.setFixedTransform(link, Tgripper[0], Tgripper[1])
     s.add(objective1)
     # s.add(objective2)
-    s.setMaxIters(100)
-    s.setTolerance(1e-4)
+    s.setTolerance(1e-2)
     res = s.solve()
     if res:
         print(s.lastSolveIters(),"iterations, residual",s.getResidual())
@@ -55,7 +55,7 @@ def solve_robot_ik(robot,gripper:GripperInfo,Tgripper):
     else:
         return None
 
-def sample_grasp_ik(robot,gripper,grasp_local,obj):
+def sample_grasp_ik(robot:RobotModel,gripper,grasp_local,obj):
     """Given a robot, a gripper, a desired antipodal grasp
     (in local coordinates), and an object, solve the IK
     problem to place the gripper at the desired grasp.
@@ -92,9 +92,44 @@ def sample_grasp_ik(robot,gripper,grasp_local,obj):
     else:
         return q, desired_transform
 
-def solve_grasp_ik(robot,gripper,grasp_local,obj):
+def solve_grasp_ik(robot:RobotModel,gripper,grasp_local,obj:RigidObjectModel):
     #TODO: fill me in find a grasp & IK configuration that avoids collisions
-    return sample_grasp_ik(robot,gripper,grasp_local,obj)
+    for i in range(20):
+        q, desired_transform = sample_grasp_ik(robot, gripper, grasp_local, obj)
+        if q is None:
+            s = ik.IKSolver(robot)
+            s.setActiveDofs([i for i in range(6, num_link)])
+            s.sampleInitial()
+            continue
+
+        collision = False
+        # Check collision free
+        # Check self collision
+        self_collision = robot.selfCollides()
+
+        # Check collision with obj
+        obj_collision = False
+        num_link = robot.numLinks()
+        for link_idx in range(num_link):
+            link = robot.link(link_idx)
+            if link.getName()=="left_gripper:right_inner_finger_pad" or link.getName()=="left_gripper:left_inner_finger_pad":
+                continue 
+            obj_geo = obj.geometry()
+            link_geo = link.geometry()
+            if obj_geo.collides(link_geo):
+                obj_collision = True 
+                break
+        collision = self_collision or obj_collision
+
+        # Return if collision free
+        if not collision:
+            return q, desired_transform
+
+        # Resample gripper initial state
+        s = ik.IKSolver(robot)
+        s.setActiveDofs([i for i in range(6, num_link)])
+        s.sampleInitial()
+    return None, None
 
 def solve_grasp_problem(robot,gripper,obj,grasp_db,obstacles):
     """Returns a triple (qrobot,Tgripper,grasp) solving the
@@ -106,10 +141,26 @@ def solve_grasp_problem(robot,gripper,obj,grasp_db,obstacles):
     #TODO: fill me in to pick a high-quality and reachable grasp & IK configuration
     if len(grasp_db)==0:
         return None,None,None
-    qrobot, Tgripper = sample_grasp_ik(robot,gripper,grasp_db[0],obj)
-    if qrobot is None:
-        return None,None,None
-    return qrobot,Tgripper,grasp_db[0]
+    for grasp in grasp_db:
+        qrobot, Tgripper = sample_grasp_ik(robot,gripper,grasp,obj)
+        if qrobot is not None:
+            # Check collision with obstacles:
+            obs_collision = False
+            for obstacle in obstacles:
+                num_link = robot.numLinks()
+                for link_idx in range(num_link):
+                    link = robot.link(link_idx)
+                    if link.getName()=="left_gripper:right_inner_finger_pad" or link.getName()=="left_gripper:left_inner_finger_pad":
+                        continue 
+                    link_geo = link.geometry()
+                    if obstacle.collides(link_geo):
+                        obs_collision = True 
+                        break
+                if obs_collision:
+                    break
+            if not obs_collision:
+                return qrobot,Tgripper,grasp
+    return None,None,None
 
 ###################################################################################
 
@@ -165,6 +216,7 @@ def problem_2():
             robot.setConfig(qrob)
             vis.setColor(vis.getItemName(robot.link(gripper.baseLink)),0,1,0)
         else:
+            print("grip not found")
             vis.setColor(vis.getItemName(robot.link(gripper.baseLink)),1,0,1,1)
         vis.update()
         grasp_db.pop(0)
@@ -216,7 +268,7 @@ def problem_2():
         if len(obstacles)==0:
             load_obstacles()
         t0 = time.time()
-        q_robot,Tgripper = solve_grasp_problem(robot,gripper,obj,grasp_db,obstacles)
+        q_robot,Tgripper,grasp = solve_grasp_problem(robot,gripper,obj,grasp_db,obstacles)
         t1 = time.time()
         print("Solved for grasp in %.3fs"%(t1-t0))
         if q_robot is not None:
