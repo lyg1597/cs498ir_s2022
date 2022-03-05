@@ -37,28 +37,14 @@ def solve_robot_ik(robot,gripper:GripperInfo,Tgripper):
     """
     #TODO: solve the IK problem
     num_link = robot.numLinks()
-    last_link = robot.link(num_link-1)
+    link = gripper.baseLink
     # gripper_link = gripper.gripperLinks 
 
     s = ik.IKSolver(robot)
+    s.setActiveDofs([i for i in range(6, num_link)])
+    s.setMaxIters(100)
     objective1 = ik.IKObjective()
     objective1.setFixedTransform(num_link-1, Tgripper[0], Tgripper[1])
-    s.add(objective1)
-    # s.add(objective2)
-    s.setMaxIters(100)
-    s.setTolerance(1e-4)
-    res = s.solve()
-    if res:
-        print(s.lastSolveIters(),"iterations, residual",s.getResidual())
-        return s.robot.config
-    else:
-        return None
-
-    s = ik.IKSolver(robot)
-    s.setActiveDofs([i for i in range(11, 17)])
-    s.setMaxIters(100)
-    objective1 = ik.IKObjective()
-    objective1.setFixedTransform(link, Tgripper[0], Tgripper[1])
     s.add(objective1)
     # s.add(objective2)
     s.setTolerance(1e-2)
@@ -67,10 +53,9 @@ def solve_robot_ik(robot,gripper:GripperInfo,Tgripper):
         print(s.lastSolveIters(),"iterations, residual",s.getResidual())
         return s.robot.config
     else:
-        print("Plan not found")
         return None
 
-def sample_grasp_ik(robot:RobotModel,gripper:GripperInfo,grasp_local:AntipodalGrasp,obj:RigidObjectModel):
+def sample_grasp_ik(robot:RobotModel,gripper,grasp_local,obj):
     """Given a robot, a gripper, a desired antipodal grasp
     (in local coordinates), and an object, solve the IK
     problem to place the gripper at the desired grasp.
@@ -101,29 +86,6 @@ def sample_grasp_ik(robot:RobotModel,gripper:GripperInfo,grasp_local:AntipodalGr
     grasp_world = AntipodalGrasp(grasp_world_center, grasp_world_axis)
     desired_transform = grasp_world.get_grasp_transform(gripper)
     q = solve_robot_ik(robot, gripper, desired_transform)
-    if q is None:
-        return None,None
-    else:
-        return q, desired_transform
-
-    s = ik.IKSolver(robot)
-    num_links = robot.numLinks()
-    s.setActiveDofs([i for i in range(6, num_links)])
-    s.setMaxIters(10000)
-    objective1 = ik.IKObjective()
-    objective1.setFixedPoints(link, [grasp_pnt1, grasp_pnt2], [grasp_world_contact1, grasp_world_contact2])
-    s.add(objective1)
-    # objective2 = ik.IKObjective()
-    # objective2.setAxialRotConstraint(gripper_axis, grasp_world_axis)
-    # s.add(objective2)
-    s.setTolerance(1e-2)
-    res = s.solve()
-    if res:
-        print(s.lastSolveIters(),"iterations, residual",s.getResidual())
-        q = s.robot.config
-    else:
-        print("Not Found", s.lastSolveIters(),"iterations, residual",s.getResidual())
-        q = None
     if q is None:
         return None,None
     else:
