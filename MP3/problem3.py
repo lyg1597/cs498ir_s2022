@@ -21,26 +21,42 @@ from problem1 import make_grasp_approach
 
 #need this from problem 2
 from problem2 import solve_grasp_problem
+from problem2 import solve_robot_ik
 
 ###########################################################################
 
-def feasible_plan(world,robot,qtarget):
+def feasible_plan(world:WorldModel,robot:RobotModel,qtarget):
     """Plans for some number of iterations from the robot's current configuration to
     configuration qtarget.  Returns the first path found.
 
     Returns None if no path was found, otherwise returns the plan.
     """
-    t0 = time.time()
     qstart = robot.getConfig()
 
     #these are the indices of the moving joints
     moving_joints = [11,12,13,14,15,16]
-    space = robotplanning.makeSpace(world=world,robot=robot,edgeCheckResolution=1e-2,movingSubset=moving_joints)
-    plan = MotionPlan(space,type='prm')
+    # space = robotplanning.makeSpace(world=world,robot=robot,edgeCheckResolution=1e-2,movingSubset=moving_joints)
+    # plan = MotionPlan(space,type='prm')
     #TODO: complete the planner setup, including endpoints, etc.
     
     #Possible hint:
     #maybe consider using planToConfig instead of setting up the space by hand?
+    constraint_list = []
+    constraint_list.append(robot.selfCollides)
+    # num_rigid_object = world.numRigidObjects()
+    # for obj_idx in range(num_rigid_object):
+    #     obj = world.rigidObject(obj_idx)
+    #     obj_geo = obj.geometry()
+    #     num_link = robot.numLinks()
+    #     for link_idx in range(num_link):
+    #         link = robot.link(link_idx)
+    #         if link.getName()=="left_gripper:right_inner_finger_pad" or link.getName()=="left_gripper:left_inner_finger_pad":
+    #                     continue 
+    #         link_geo = link.geometry()
+    plan:MotionPlan = robotplanning.plan_to_config(world=world, robot=robot, target=qtarget, edgeCheckResolution=1e-2, movingSubset=moving_joints,type='sbl')
+
+    plan.setOptions(perturbationRadius=0.5, connectionThreshold=3.0)
+
 
     #Possible hint:
     #since the C-space only includes the moving joints, the SubRobotModel is a good
@@ -50,15 +66,25 @@ def feasible_plan(world,robot,qtarget):
     #SubRobotModel.fromfull(qrobot) => qsubrobot
     #SubRobotModel.tofull(subrobot_path) => robot_path
     #SubRobotModel.fromfull(robot_path) => subrobot_path
-    moving_robot = SubRobotModel(robot,moving_joints)
-    qstart_lower = moving_robot.fromfull(qstart)
-    qtarget_lower = moving_robot.fromfull(qtarget)
+    # moving_robot = SubRobotModel(robot,moving_joints)
+    # qstart_lower = moving_robot.fromfull(qstart)
+    # qtarget_lower = moving_robot.fromfull(qtarget)
+    t0 = time.time()
+    while time.time()-t0<5:
+        plan.planMore(1)
+        path = plan.getPath(0,1)
+        if path is not None and len(path)!=0:
+            break
+    path = plan.getPath(0,1)
+    if path is None or len(path)==0:
+        return None
     
     #to be nice to the C++ module, do this to free up memory
     plan.space.close()
     plan.close()
     #this just moves in a straight line in 1 second
-    return RobotTrajectory(robot,[0,1],[robot.getConfig(),qtarget])
+    t = [i for i in range(len(path))]
+    return RobotTrajectory(robot,t,path)
 
 
 def optimizing_plan(world,robot,qtarget):
@@ -68,7 +94,38 @@ def optimizing_plan(world,robot,qtarget):
     Returns None if no path was found, otherwise returns the best plan found.
     """
     #TODO: copy what's in feasible_plan, but change the way in which you to terminate
-    return feasible_plan(world,robot,qtarget)
+    qstart = robot.getConfig()
+
+    #these are the indices of the moving joints
+    moving_joints = [11,12,13,14,15,16]
+    # space = robotplanning.makeSpace(world=world,robot=robot,edgeCheckResolution=1e-2,movingSubset=moving_joints)
+    # plan = MotionPlan(space,type='prm')
+    #TODO: complete the planner setup, including endpoints, etc.
+    
+    #Possible hint:
+    #maybe consider using planToConfig instead of setting up the space by hand?
+    constraint_list = []
+    constraint_list.append(robot.selfCollides)
+    plan:MotionPlan = robotplanning.plan_to_config(world=world, robot=robot, target=qtarget, edgeCheckResolution=1e-2, movingSubset=moving_joints,type='lazyprm*')
+
+    plan.setOptions(suboptimalityFactor=1)
+
+    t0 = time.time()
+    while time.time()-t0<5:
+        plan.planMore(1)
+        path = plan.getPath(0,1)
+        if path is not None and len(path)!=0:
+            break
+    path = plan.getPath(0,1)
+    if path is None or len(path)==0:
+        return None
+    
+    #to be nice to the C++ module, do this to free up memory
+    plan.space.close()
+    plan.close()
+    #this just moves in a straight line in 1 second
+    t = [i for i in range(len(path))]
+    return RobotTrajectory(robot,t,path)
 
 def debug_plan_results(plan,robot,world):
     """Potentially useful for debugging planning results..."""
@@ -111,7 +168,7 @@ def debug_plan_results(plan,robot,world):
 
     print("Planned path with length",trajectory.RobotTrajectory(robot,milestones=path).length())
 
-def plan_grasping_motion(world,robot,gripper,obj,grasp_db):
+def plan_grasping_motion(world:WorldModel,robot:RobotModel,gripper:GripperInfo,obj:RigidObjectModel,grasp_db):
     """Returns a (RobotTrajectory,AntipodalGrasp) pair giving the
     robot's grasping motion as well as the final grasp obtained.
     
@@ -120,7 +177,12 @@ def plan_grasping_motion(world,robot,gripper,obj,grasp_db):
     qstart = robot.getConfig()
     
     obstacles = []
-    
+    num_obs = world.numRigidObjects()
+    for obs_idx in range(num_obs):
+        obs = world.rigidObject(obs_idx)
+        obs_geo = obs.geometry()
+        obstacles.append(obs_geo)
+
     #find a collision-free configuration that solves the IK problem and meets a grasp
     qgrasp,Tgripper,grasp = solve_grasp_problem(robot,gripper,obj,grasp_db,obstacles)
     if qgrasp is None:
@@ -135,11 +197,19 @@ def plan_grasping_motion(world,robot,gripper,obj,grasp_db):
     
     #Now plan a robot trajectory that reaches the approach trajectory
     #TODO:
+    Tgripper_start = gripper_traj.eval(0)
+    q_target_start = solve_robot_ik(robot, gripper, Tgripper_start)
+    traj1 = feasible_plan(world, robot, q_target_start)
     
     #Now convert the finger / gripper approach to a robot trajectory
     #TODO:
-    return None,None
-
+    Tgripper_end = gripper_traj.eval(1)
+    q_target_end = solve_robot_ik(robot, gripper, Tgripper_end)
+    traj2 = RobotTrajectory(robot,[0,1],[q_target_start, q_target_end])
+    mile_stone_list = traj1.milestones + traj2.milestones
+    t = [i for i in range(len(mile_stone_list))]
+    traj = RobotTrajectory(robot, t, mile_stone_list)
+    return traj,grasp
 
 ###########################################################################
 
@@ -275,5 +345,5 @@ def problem_3c():
     vis.loop()
 
 if __name__ == '__main__':
-    #problem_3ab()
-    problem_3c()
+    problem_3ab()
+    # problem_3c()

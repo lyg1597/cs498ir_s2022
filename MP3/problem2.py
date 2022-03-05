@@ -53,6 +53,7 @@ def solve_robot_ik(robot,gripper:GripperInfo,Tgripper):
         print(s.lastSolveIters(),"iterations, residual",s.getResidual())
         return s.robot.config
     else:
+        print("Plan not found")
         return None
 
 def sample_grasp_ik(robot:RobotModel,gripper,grasp_local,obj):
