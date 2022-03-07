@@ -36,12 +36,11 @@ def solve_robot_ik(robot,gripper:GripperInfo,Tgripper):
         Tgripper (klampt se3 object)
     """
     #TODO: solve the IK problem
-    num_link = robot.numLinks()
     link = gripper.baseLink
     # gripper_link = gripper.gripperLinks 
 
     s = ik.IKSolver(robot)
-    s.setActiveDofs([i for i in range(6, num_link)])
+    s.setActiveDofs([i for i in range(11, 17)])
     s.setMaxIters(100)
     objective1 = ik.IKObjective()
     objective1.setFixedTransform(link, Tgripper[0], Tgripper[1])
@@ -56,7 +55,7 @@ def solve_robot_ik(robot,gripper:GripperInfo,Tgripper):
         print("Plan not found")
         return None
 
-def sample_grasp_ik(robot:RobotModel,gripper,grasp_local,obj):
+def sample_grasp_ik(robot:RobotModel,gripper:GripperInfo,grasp_local:AntipodalGrasp,obj:RigidObjectModel):
     """Given a robot, a gripper, a desired antipodal grasp
     (in local coordinates), and an object, solve the IK
     problem to place the gripper at the desired grasp.
@@ -83,11 +82,55 @@ def sample_grasp_ik(robot:RobotModel,gripper,grasp_local,obj):
     object_transform = obj.getTransform()
     grasp_local_center = grasp_local.center
     grasp_local_axis = grasp_local.axis
+    grasp_local_tmp = vectorops.add(grasp_local_center,np.array(grasp_local_axis)/np.linalg.norm(grasp_local_axis))
+    grasp_local_axis2 = (np.array(grasp_local.contact1.x) - np.array(grasp_local.contact2.x)).tolist()
+    grasp_local_contact1 = grasp_local.contact1.x 
+    grasp_local_contact2 = grasp_local.contact2.x 
     grasp_world_center = se3.apply(object_transform, grasp_local_center)
+    grasp_world_tmp = se3.apply(object_transform, grasp_local_tmp)
     grasp_world_axis = se3.apply_rotation(object_transform, grasp_local_axis)
+    grasp_world_axis2 = se3.apply_rotation(object_transform, grasp_local_axis2)
     grasp_world = AntipodalGrasp(grasp_world_center, grasp_world_axis)
+    grasp_world_contact1 = se3.apply(object_transform, grasp_local_contact1)
+    grasp_world_contact2 = se3.apply(object_transform, grasp_local_contact2)
     desired_transform = grasp_world.get_grasp_transform(gripper)
-    q = solve_robot_ik(robot, gripper, desired_transform)
+    grasp_pnt1 = se3.apply(se3.inv(desired_transform), grasp_world_contact1)
+    grasp_pnt2 = se3.apply(se3.inv(desired_transform), grasp_world_contact2)
+    
+    # gripper_axis = gripper.primaryAxis
+    # gripper_axis2 = gripper.secondaryAxis
+    # gripper_center = gripper.center
+    # gripper_tmp = vectorops.add(gripper_center, np.array(gripper_axis)/np.linalg.norm(gripper_axis))
+    # gripper_link = robot.link(gripper.baseLink)
+    # gripper_transform = gripper_link.getTransform()
+    # gripper_contact1 = se3.apply(se3.inv(gripper_transform), grasp_world_contact1)
+    # gripper_contact2 = se3.apply(se3.inv(gripper_transform), grasp_world_contact2)
+
+    # rotation = so3.align(grasp_world_axis, gripper_world_axis)
+    # offset = (-np.array(gripper_world_center) + np.array(gripper_world_center)).tolist()
+    # start_pnt1 = se3.apply([rotation, offset], target_pnt1)
+    # start_pnt2 = se3.apply([rotation, offset], target_pnt2)
+    link = gripper.baseLink
+    # gripper_link = gripper.gripperLinks 
+
+    s = ik.IKSolver(robot)
+    num_links = robot.numLinks()
+    s.setActiveDofs([i for i in range(6, num_links)])
+    s.setMaxIters(10000)
+    objective1 = ik.IKObjective()
+    objective1.setFixedPoints(link, [grasp_pnt1, grasp_pnt2], [grasp_world_contact1, grasp_world_contact2])
+    s.add(objective1)
+    # objective2 = ik.IKObjective()
+    # objective2.setAxialRotConstraint(gripper_axis, grasp_world_axis)
+    # s.add(objective2)
+    s.setTolerance(1e-2)
+    res = s.solve()
+    if res:
+        print(s.lastSolveIters(),"iterations, residual",s.getResidual())
+        q = s.robot.config
+    else:
+        print("Not Found", s.lastSolveIters(),"iterations, residual",s.getResidual())
+        q = None
     if q is None:
         return None,None
     else:
@@ -99,7 +142,7 @@ def solve_grasp_ik(robot:RobotModel,gripper,grasp_local,obj:RigidObjectModel):
         q, desired_transform = sample_grasp_ik(robot, gripper, grasp_local, obj)
         if q is None:
             s = ik.IKSolver(robot)
-            s.setActiveDofs([i for i in range(6, num_link)])
+            s.setActiveDofs([i for i in range(11, 17)])
             s.sampleInitial()
             continue
 
