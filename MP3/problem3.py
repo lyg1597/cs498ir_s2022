@@ -106,9 +106,9 @@ def optimizing_plan(world,robot,qtarget):
     #maybe consider using planToConfig instead of setting up the space by hand?
     constraint_list = []
     constraint_list.append(robot.selfCollides)
-    plan:MotionPlan = robotplanning.plan_to_config(world=world, robot=robot, target=qtarget, edgeCheckResolution=1e-2, movingSubset=moving_joints,type='lazyprm*')
+    plan:MotionPlan = robotplanning.plan_to_config(world=world, robot=robot, target=qtarget, edgeCheckResolution=1e-2, movingSubset=moving_joints,type='sbl')
 
-    plan.setOptions(suboptimalityFactor=1)
+    plan.setOptions(perturbationRadius=0.5, connectionThreshold=3.0, shortcut=1)
 
     t0 = time.time()
     while time.time()-t0<5:
@@ -194,17 +194,38 @@ def plan_grasping_motion(world:WorldModel,robot:RobotModel,gripper:GripperInfo,o
     #determine the approach trajectory for the gripper
     approach_dist = 0.05
     gripper_traj, finger_traj = make_grasp_approach(gripper,Tgripper,grasp.finger_width,approach_dist)
+    if gripper_traj is None:
+        print("gripper trajectory not found")
+        return None, None 
     
     #Now plan a robot trajectory that reaches the approach trajectory
     #TODO:
     Tgripper_start = gripper_traj.eval(0)
     q_target_start = solve_robot_ik(robot, gripper, Tgripper_start)
+    if q_target_start is None:
+        print("failed to solve robot ik1")
+        return None, None 
+    robot.setConfig(qstart)
+    for i in range(len(q_target_start)):
+        if i not in [11,12,13,14,15,16]:
+            q_target_start[i] = qstart[i]
+
     traj1 = feasible_plan(world, robot, q_target_start)
+    if traj1 is None:
+        print("failed to find feasiable plan")
+        return None, None 
     
     #Now convert the finger / gripper approach to a robot trajectory
     #TODO:
     Tgripper_end = gripper_traj.eval(1)
     q_target_end = solve_robot_ik(robot, gripper, Tgripper_end)
+    if q_target_end is None:
+        print("failed to solve robot ik2")
+        return None, None 
+    robot.setConfig(qstart)
+    for i in range(len(q_target_end)):
+        if i not in [11,12,13,14,15,16]:
+            q_target_end[i] = qstart[i]
     traj2 = RobotTrajectory(robot,[0,1],[q_target_start, q_target_end])
     mile_stone_list = traj1.milestones + traj2.milestones
     t = [i for i in range(len(mile_stone_list))]
