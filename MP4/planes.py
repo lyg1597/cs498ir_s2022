@@ -13,9 +13,9 @@ from rgbd_realsense import load_rgbd_dataset
 import json
 
 #set the problem you are working on. you can also set this from the command line
-# PROBLEM = '2a'
+PROBLEM = '2a'
 # PROBLEM = '2b'
-PROBLEM = '2c'
+# PROBLEM = '2c'
 DONT_EXTRACT = False #if you just want to see the point clouds, turn this to true
 
 def extract_planes_ransac_a(pc,N=100,m=3,inlier_threshold=0.01,inlier_count=20000):
@@ -149,7 +149,7 @@ def extract_planes_ransac_b(pc,N=100,m=3,inlier_threshold=0.01,inlier_count=2000
             idx = idx + 1
     return planes
 
-def extract_planes_ransac_c(pc,N=100,m=3,inlier_threshold=0.015,inlier_count=50000):
+def extract_planes_ransac_c(pc,N=100,m=3,inlier_threshold=0.01,inlier_count=50000):
     """Uses RANSAC to determine which planes make up the scene
 
     Args:
@@ -242,6 +242,7 @@ def extract_planes_ransac_c(pc,N=100,m=3,inlier_threshold=0.015,inlier_count=500
         else:
             idx = idx + 1
     
+    print(len(planes))
     # Recomput inlier based on the computed planes
     print("Recomput inlier based on the computed planes")
     tmp_planes = []
@@ -290,18 +291,22 @@ def extract_planes_ransac_c(pc,N=100,m=3,inlier_threshold=0.015,inlier_count=500
 
 if __name__ == '__main__':
     #read problem from command line, if provided
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2:
         PROBLEM = sys.argv[1]
+        TMP = int(sys.argv[2])
+    elif len(sys.argv) > 1:
+        PROBLEM = sys.argv[1]
+        # TMP = sys.argv[2]
         
     scans = load_rgbd_dataset('calibration')
     planesets = []
     for scanno,s in enumerate(scans):
-        if scanno!=0 :
-            continue
+        # if scanno!=TMP :
+        #     continue
         pc = s.get_point_cloud(colors=True,normals=True,structured=True,format='PointCloud')
-        vis.clear()
-        vis.setWindowTitle("Scan "+str(scanno))
-        vis.add("PC",pc)
+        # vis.clear()
+        # vis.setWindowTitle("Scan "+str(scanno))
+        # vis.add("PC",pc)
         if not DONT_EXTRACT:
             pc2 = s.get_point_cloud(colors=False,normals=False,structured=True)
             if PROBLEM=='2a':
@@ -310,6 +315,13 @@ if __name__ == '__main__':
                 planes = extract_planes_ransac_b(pc2)
             else:
                 planes = extract_planes_ransac_c(pc2)
+            
+            # planes2 = extract_planes_ransac_b(pc2)
+            # planes3 = extract_planes_ransac_c(pc2)
+            # planes = planes3 
+            # print(len(planes2), len(planes3))
+
+            print(len(planes))
             planesets.append(planes)
             for j,plane in enumerate(planes):
                 color = (random.random(),random.random(),random.random())
@@ -320,8 +332,8 @@ if __name__ == '__main__':
                 plane_eqn = fit_plane(pc2[plane])
                 centroid = np.average(pc2[plane],axis=0).tolist()
                 assert len(centroid)==3
-                vis.add("Plane "+str(j),Trajectory(milestones=[centroid,vectorops.madd(centroid,plane_eqn[:3],0.1)]),color=(1,1,0,1))
-        vis.dialog()
+        #         vis.add("Plane "+str(j),Trajectory(milestones=[centroid,vectorops.madd(centroid,plane_eqn[:3],0.1)]),color=(1,1,0,1))
+        # vis.dialog()
     if not DONT_EXTRACT:
         print("Dumping plane identities to planesets.json")
         with open("planesets.json","w") as f:
