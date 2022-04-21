@@ -53,16 +53,12 @@ def mutual_orthogonality(scans,planesets,fx,fy,cx,cy):
             plane_normals.append(np.array(plane_eqn[:3]))
         #do something with the cost
         # print(len(plane_normals))
-        tmp_cost = 0
         for i in range(len(plane_normals)):
             for j in range(i+1, len(plane_normals)):
                 dot_product = abs(np.dot(plane_normals[i], plane_normals[j]))
                 cross_product = np.linalg.norm(np.cross(plane_normals[i], plane_normals[j]))
                 if cross_product > 0.001:
-                    tmp_cost += dot_product
-        # print(f"scan {scanno}, {tmp_cost}")
-        cost += tmp_cost
-
+                    cost += dot_product
     return cost
 
 def fxfy_objective(x, cx, cy, scans, planesets):
@@ -76,12 +72,12 @@ def calibrate_intrinics_fxfy(scans,planesets):
     cx = cam.depth_intrinsics['cx']
     cy = cam.depth_intrinsics['cy']
     # print("TODO... problem 3.B")
-    print(fx, fy, cx, cy)
+    print(fx, fy)
     initial_guess = np.array([fx,fy])
     print(fxfy_objective(initial_guess, cx, cy, scans, planesets))
     res = minimize(fxfy_objective, initial_guess, args = (cx, cy, scans, planesets,), method = "Nelder-Mead", options={"maxiter":50})
     fx, fy = res.x
-    print(fx, fy, cx, cy) 
+    print(fx, fy) 
     print(fxfy_objective(np.array([fx, fy]), cx, cy, scans, planesets))
     return fx, fy 
 
