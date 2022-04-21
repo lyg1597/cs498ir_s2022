@@ -13,11 +13,21 @@ def sample_patch_dataset(dataset,N,patch_size=30):
     retained_per_image = N//len(dataset)
     patch_radius = patch_size//2
     samples = []
+    high_quality_grasp_porb = 0.5
+    high_quality_grasp_thres = 0.75
+
     for image_idx,image in enumerate(dataset):
         color,depth,transform,grasp_attrs = image
-        grasp_score = grasp_attrs['score']
+        
+        output = grasp_attrs['score']
         for i in range(retained_per_image):
-            x,y = random.randint(patch_radius,color.shape[1]-1-patch_radius),random.randint(patch_radius,color.shape[0]-1-patch_radius)
+            if random.uniform(0,1)>1-high_quality_grasp_porb:
+                x,y = random.randint(patch_radius,color.shape[1]-1-patch_radius),random.randint(patch_radius,color.shape[0]-1-patch_radius)
+                
+            else:
+                true_array = output>high_quality_grasp_thres
+                idx_array = np.argwhere(true_array)
+                y,x = idx_array[random.randint(0,idx_array.shape[0]-1),:]
             samples.append((image_idx,x,y))
     return samples
 

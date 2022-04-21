@@ -82,6 +82,8 @@ def make_patch_dataset(dataset,predicted_attr='score',patch_size=30):
     """
     #TODO: tune me / fill me in for Problem 1a
     samples_per_image = 100
+    high_quality_grasp_porb = 0.5
+    high_quality_grasp_thres = 0.75
     patch_radius = patch_size//2
     A = []
     b = []
@@ -95,13 +97,24 @@ def make_patch_dataset(dataset,predicted_attr='score',patch_size=30):
         output = grasp_attrs[predicted_attr]
         scores = []
         for i in range(samples_per_image):
-            x,y = random.randint(patch_radius,color.shape[1]-1-patch_radius),random.randint(patch_radius,color.shape[0]-1-patch_radius)
+            if random.uniform(0,1)>1-high_quality_grasp_porb:
+                x,y = random.randint(patch_radius,color.shape[1]-1-patch_radius),random.randint(patch_radius,color.shape[0]-1-patch_radius)
+                
+            else:
+                true_array = output>high_quality_grasp_thres
+                idx_array = np.argwhere(true_array)
+                y,x = idx_array[random.randint(0,idx_array.shape[0]-1),:]
             
             roi = (y-patch_radius,y+patch_radius,x-patch_radius,x+patch_radius)
             patch1 = get_region_of_interest(color,roi).flatten()
             patch2 = get_region_of_interest(depth,roi).flatten()
-            A.append(np.hstack((patch1,patch2)))
+            patch3 = get_region_of_interest(color_gradient_x, roi).flatten()
+            patch4 = get_region_of_interest(color_gradient_y, roi).flatten()
+            patch5 = get_region_of_interest(depth_gradient_x, roi).flatten()
+            patch6 = get_region_of_interest(depth_gradient_y, roi).flatten()
+            A.append(np.hstack((patch1,patch2,patch3,patch4,patch5,patch6)))
             assert len(A[-1].shape)==1
             assert A[-1].shape == A[0].shape
             b.append(output[y,x])
+        
     return np.vstack(A),np.array(b)

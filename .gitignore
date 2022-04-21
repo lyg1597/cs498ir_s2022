@@ -140,3 +140,9 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+MP5/generated_worlds/
+MP5/image_dataset/
+MP5/**.pkl
+MP5/patch_dataset/
+MP5/predictions/
