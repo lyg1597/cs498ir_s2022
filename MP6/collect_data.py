@@ -8,17 +8,21 @@ from klampt import *
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
+import time
+import pickle
 
 DATASET_FOLDER = 'generated_data'
 
 def randomize_world(world : WorldModel, sim : Simulator):
     """Helper function to help reset the world state. """
     for i in range(world.numRigidObjects()):
+        posx = np.random.uniform(0.1,0.3)
+        posy = np.random.uniform(-0.2,0.2)
         obj = world.rigidObject(i)
         #TODO: sample object positions
         #Bad things will happen to the sim if the objects are colliding!
         T = obj.getTransform()
-        obj.setTransform(T[0],vectorops.add(T[1],[0.01,0,0]))
+        obj.setTransform(T[0],vectorops.add([posx,posy,0],[0,0,0.015]))
 
     #reset the sim bodies -- this code doesn't need to be changed
     for i in range(world.numRigidObjects()):
@@ -41,6 +45,8 @@ if __name__ == '__main__':
     grasp_data = None 
     grasp_image = None 
     state = 'move_out_of_way'
+    data_input = []
+    data_output = []
 
     def initVis():
         vis.add("world",controller.world)
@@ -50,71 +56,50 @@ if __name__ == '__main__':
     def loopVis():
         global plotShown,im,numExamples
         global state
-        global grasp_data,grasp_image
+        global data_input 
+        global data_output
         with StepContext(controller):
             #TODO: fill me out to perform self-supervised data generation -- will want to generate a
             #target, try grasping, and try lifting. Then use your sensors to determine whether you
             #have grasped the object, and then save the image and grasp location.
             #
             #You will want to implement a state machine...
-            #                
-            
-            rgb, depth = controller.rgbdImages()
+            #   
+
+            rgb, depth = None, None
             if state == 'move_out_of_way':
                 print('move_out_of_way')
                 controller.setArmPosition(q_out_of_the_way)
                 state = 'move_out_of_way_wait'
             elif state == 'move_out_of_way_wait':
                 if controller.arm.destinationTime()-controller.arm.clock() < 0.05:
-                    state = 'move_target'
-            elif state == 'move_target':
-                state = 'move_target_wait'
-                # Red rgbd image
-                # Determine a position
+                    state = "collect"
+            elif state == "collect":
+                print(f"collect{numExamples}")
+                randomize_world(controller.world,controller.sim)
+                controllerVis.update()
+
+                time.sleep(0.01)
+                # Get ground truth             
+                posx = 0
+                posy = 0
+                for i in range(controller.world.numRigidObjects()):
+                    obj = controller.world.rigidObject(i)
+                    #TODO: sample object positions
+                    #Bad things will happen to the sim if the objects are colliding!
+                    T = obj.getTransform()
+                    posx = T[1][0]
+                    posy = T[1][1]
+                data_output.append([posx,posy])
+                rgb, depth = controller.rgbdImages()
+                rgb, depth = controller.rgbdImages()
+
                 true_array = depth<0.38
                 idx_array = np.argwhere(true_array)
-                y,x = idx_array[np.random.randint(0,idx_array.shape[0]-1),:]
-                # y = y-controller.image_h/2
-                # x = x-controller.image_w/2
-                # y = y/(controller.image_h/2*7)
-                # x = x/(controller.image_w/2*5)
-                A = np.array([[-0.0006,    0.0010],[-0.0006,    0.0012]])
-                x,y = A@np.array([x,y])
-                x,y,_ = se3.apply(Tcamera_world, [x,y,0])
-                print(f'move_target {x},{y}')
-                # grasp_image = rgb 
-                grasp_data = [x,y]
-
-                controller.arm.moveToCartesianPosition((so3.identity(),[grasp_data[0], grasp_data[1], 0.05]))
-            elif state == 'move_target_wait':
-                if controller.arm.destinationTime()-controller.arm.clock() < 0.05:
-                    state = 'grasp'
-            elif state == 'grasp':
-                grasp_image = rgb 
-                print('grasp')
-                controller.setVacuumOn()
-                state = 'move_up'
-            elif state == 'move_up':
-                print('move_up')
-                flow = controller.getVacuumFlow()
-                controller.arm.moveToCartesianPosition((so3.identity(),[grasp_data[0], grasp_data[1],0.1]))
-                state = 'move_up_wait'
-            elif state == 'move_up_wait':
-                if controller.arm.destinationTime()-controller.arm.clock() < 0.05:
-                    state = 'store'
-            elif state == 'store':
-                print('store')
-                state = 'move_out_of_way'
-                controller.setVacuumOff()
-                tmp = Image.fromarray(grasp_image)
-                tmp.save(f'{DATASET_FOLDER}/{numExamples}.png')
+                mean_pos = np.mean(idx_array, axis = 0)
+                data_input.append(mean_pos)
                 numExamples += 1
 
-            #print the flow sensor if the vacuum is on
-            if controller.getVacuumCommand() > 0:
-                print("Flow:",controller.getVacuumFlow())
-
-            rgb,depth = controller.rgbdImages()
             #update the Matplotlib window if the sensor is working
             if rgb is not None:
                 #funky stuff to make sure that the image window updates quickly
@@ -125,7 +110,8 @@ if __name__ == '__main__':
                 else:
                     im.set_array(rgb)
                     plt.gcf().canvas.draw()
-
+            if numExamples > 5000:
+                vis.kill()
             controllerVis.update()
 
     def closeVis():
@@ -133,4 +119,9 @@ if __name__ == '__main__':
 
     #maximum compability with Mac
     vis.loop(initVis,loopVis,closeVis)
-    
+    # print(data_input, data_output)
+    data_input = data_input[1:]
+    data_output = data_output[:-1]
+    assert len(data_input) == len(data_output)
+    with open('train_data.pickle','wb+') as f:
+        pickle.dump((data_input, data_output),f)
