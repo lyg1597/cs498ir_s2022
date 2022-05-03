@@ -13,12 +13,20 @@ DATASET_FOLDER = 'generated_data'
 
 def randomize_world(world : WorldModel, sim : Simulator):
     """Helper function to help reset the world state. """
+    region_code_choice = np.random.choice([0,1,2,3,4,5], size = world.numRigidObjects, replace = False)
     for i in range(world.numRigidObjects()):
         obj = world.rigidObject(i)
         #TODO: sample object positions
         #Bad things will happen to the sim if the objects are colliding!
         T = obj.getTransform()
-        obj.setTransform(T[0],vectorops.add(T[1],[0.01,0,0]))
+        region_code = region_code_choice[i]
+        tmp = int(region_code)/int(3)
+        x_low, x_high = (0.1+tmp*0.1, 0.1+(tmp+1)*0.1)
+        tmp = int(region_code)%3
+        y_low, y_high = (-0.2 + tmp*0.4/3, -0.2+(tmp+1)*0.4/3)
+        x = np.random.uniform(x_low, x_high)
+        y = np.random.uniform(y_low, y_high)
+        obj.setTransform(T[0],vectorops.add([x,y,T[1][2]],[0.01,0,0]))
 
     #reset the sim bodies -- this code doesn't need to be changed
     for i in range(world.numRigidObjects()):
